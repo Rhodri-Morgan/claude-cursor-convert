@@ -1,4 +1,4 @@
-# cursor-claude-convert
+# claude-cursor-convert
 
 Converts Claude Code configuration (skills, agents, MCP servers) into Cursor-compatible equivalents.
 
