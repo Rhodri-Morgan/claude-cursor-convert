@@ -1,8 +1,9 @@
 CLAUDE_CONFIG ?= /Users/rhodri/Documents/REPOS/RTM_REPOS/claude-code-config/.claude
 MCP_SOURCE    ?= $(HOME)/.claude.json
+CLAUDE_JSON   ?= $(MCP_SOURCE)
 OUTPUT_DIR    ?= $(HOME)/.cursor
 
-.PHONY: all skills agents mcp commands
+.PHONY: all skills agents mcp commands allowlist
 
 all: skills agents mcp commands
 
@@ -17,3 +18,8 @@ commands:
 
 mcp:
 	uv run python scripts/convert_mcp.py --source $(MCP_SOURCE) --output $(OUTPUT_DIR)
+
+allowlist:
+	uv run python scripts/convert_allowlist.py --output $(OUTPUT_DIR) \
+		--settings $(CLAUDE_CONFIG)/settings.json \
+		--claude-json $(CLAUDE_JSON)
