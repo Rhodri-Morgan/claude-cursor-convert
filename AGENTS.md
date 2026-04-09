@@ -1,15 +1,17 @@
 # claude-cursor-convert
 
-Converts Claude Code configuration (skills, agents, MCP servers) into Cursor-compatible equivalents.
+Converts Claude Code configuration (skills, agents, commands, MCP servers, permissions) into Cursor-compatible equivalents.
 
 ## Project structure
 
 ```
 scripts/
-  convert_skills.py   # Claude Code SKILL.md → Cursor SKILL.md
-  convert_agents.py   # Claude Code agents → Cursor AGENT.md subagents
-  convert_mcp.py      # Claude Code mcpServers → Cursor mcp.json
-Makefile              # Orchestrates all conversions via `make all`
+  convert_skills.py     # Claude Code SKILL.md → Cursor SKILL.md
+  convert_agents.py     # Claude Code agents → Cursor AGENT.md subagents
+  convert_commands.py   # User-invocable skills → Cursor commands/*.md
+  convert_mcp.py        # Claude Code mcpServers → Cursor mcp.json
+  convert_allowlist.py  # Claude Code permissions → Cursor permissions.json + cli-config.json
+Makefile                # Orchestrates all conversions via `make all`
 ```
 
 ## How it works
@@ -46,12 +48,38 @@ Each script reads from the Claude Code config directory and writes to `~/.cursor
 - Supports `--no-mask` to write plaintext values
 - Handles both stdio (command/args) and remote (url/headers) transports
 
+### Commands conversion (`convert_commands.py`)
+
+- **Source**: `.claude/skills/*/SKILL.md` (only those with `user-invocable: true`)
+- **Output**: `~/.cursor/commands/<name>.md`
+- Extracts user-invocable skills as Cursor slash commands
+- First line is a plain-text description, followed by the skill body
+- Cursor invokes these via `/command-name` in the agent UI
+
+### Allowlist conversion (`convert_allowlist.py`)
+
+- **Source**: `.claude/settings.json` `permissions.{allow,deny,ask}` + `~/.claude.json` `projects.*.allowedTools`
+- **Output**: `~/.cursor/permissions.json` + `~/.cursor/cli-config.json`
+- Handles Cursor's dual permission system:
+  - `permissions.json`: IDE agent UI — `terminalAllowlist` with plain command strings, `approvalMode: "allowlist"`
+  - `cli-config.json`: CLI tool — `Shell()`/`Mcp()`/`Write()`/`LS()` wrapped tokens in `permissions.allow`/`permissions.deny`
+- Rule transformations:
+  - `Bash(cmd:*)` → `Shell(cmd)` (strips `:*`, Cursor uses prefix matching)
+  - `Edit(path)` → `Write(path)`
+  - `Glob(path)` → `LS(path)`
+  - `mcp__server__tool` → `Mcp(server:tool)` (colon separator)
+- Drops Claude-only tools: `Agent(*)`, `Skill(*)`, `NotebookEdit`, `WebSearch`, `WebFetch`
+- Maps `ask` rules to `deny` (Cursor has no ask tier)
+- Merges into existing `cli-config.json` preserving other keys (`version`, `editor`, etc.)
+
 ## Key decisions
 
 - **No external dependencies**: All scripts use Python stdlib only (re, json, argparse, pathlib). Frontmatter is parsed with regex rather than requiring pyyaml.
 - **Secret masking on by default**: MCP converter masks anything that looks like a credential. Use `--no-mask` to override.
 - **Model mapping**: All Claude Code models map to `inherit` for Cursor since Cursor's model selection works differently.
-- **Lossy conversion**: Some Claude Code features have no Cursor equivalent (tool restrictions per skill, user-invocable flag, per-skill model override). These are stripped with verbose logging.
+- **Lossy conversion**: Some Claude Code features have no Cursor equivalent (tool restrictions per skill, per-skill model override). These are stripped with verbose logging.
+- **Dual permission output**: Cursor's IDE agent and CLI tool read different files with different formats. The allowlist converter writes both to avoid confusion.
+- **Ask → Deny mapping**: Claude Code's three-tier permissions (allow/deny/ask) collapse to two tiers (allow/deny) in Cursor. Ask rules are conservatively mapped to deny.
 
 ## Makefile variables
 
@@ -59,4 +87,5 @@ Each script reads from the Claude Code config directory and writes to `~/.cursor
 |---|---|---|
 | `CLAUDE_CONFIG` | `/Users/rhodri/.../claude-code-config/.claude` | Claude Code config directory |
 | `MCP_SOURCE` | `~/.claude.json` | File containing `mcpServers` |
+| `CLAUDE_JSON` | Same as `MCP_SOURCE` | File containing `allowedTools` and project permissions |
 | `OUTPUT_DIR` | `~/.cursor` | Where converted files go |
